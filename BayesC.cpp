@@ -89,8 +89,8 @@ double sample_mu(int N, double Esigma2,const VectorXd& Y,const MatrixXd& X,const
 double sample_psi2_chisq(const VectorXd& beta,int NZ,double v0B,double s0B){
 	double df=v0B+NZ;
 	double scale=(beta.squaredNorm()*NZ+v0B*s0B)/(v0B+NZ);
+	//cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<endl;
 	double psi2=rinvchisq(df, scale);
-	cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<psi2<<endl;
 	return(psi2);
 }
 
@@ -109,26 +109,26 @@ double sample_w(int M,int NZ){
 int main(int argc, char *argv[])
 {
 
-po::options_description desc("Options");
-desc.add_options()
-    ("M", po::value<int>()->default_value(2500), "No. of simulated markers")
-	("N", po::value<int>()->default_value(1000), "No. of simulated individuals")
-	("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
-	("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
-    ("out", po::value<std::string>()->default_value("BayesC_out.txt"),"Output filename")
-	;
+	po::options_description desc("Options");
+	desc.add_options()
+    		("M", po::value<int>()->default_value(2500), "No. of simulated markers")
+			("N", po::value<int>()->default_value(1000), "No. of simulated individuals")
+			("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
+			("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
+			("out", po::value<std::string>()->default_value("BayesC_out"),"Output filename")
+			;
 
-po::variables_map vm;
-po::store(po::parse_command_line(argc,argv,desc),vm);
-po::notify(vm);
+	po::variables_map vm;
+	po::store(po::parse_command_line(argc,argv,desc),vm);
+	po::notify(vm);
 
-int M=vm["M"].as<int>();
-int N=vm["N"].as<int>();
-double pNZ=vm["pNZ"].as<double>();
-int MT=pNZ*M;
+	int M=vm["M"].as<int>();
+	int N=vm["N"].as<int>();
+	double pNZ=vm["pNZ"].as<double>();
+	int MT=pNZ*M;
 
-int iter=vm["iter"].as<int>();
-string output=vm["out"].as<string>();
+	int iter=vm["iter"].as<int>();
+	string output=vm["out"].as<string>();
 
 	int i,j,k,l,m=0;
 	double sigmaY_true=1;
@@ -192,13 +192,13 @@ string output=vm["out"].as<string>();
 	double Epsi2=rbeta(1,1);
 
 	//Standard parameterization of hyperpriors for variances
-	double v0E=0.001,s0E=0.001,v0B=0.001,s0B=0.001;
+	//double v0E=0.001,s0E=0.001,v0B=0.001,s0B=0.001;
 
 
 	// Alternative parameterization of hyperpriors for variances
-	//double v0E=4,v0B=4;
-	//double s0B=((v0B-2)/v0B)*Epsi2;
-	//double s0E=((v0E-2)/v0E)*Esigma2;
+	double v0E=4,v0B=4;
+	double s0B=((v0B-2)/v0B)*Epsi2;
+	double s0E=((v0E-2)/v0E)*Esigma2;
 
 
 	//pre-computed elements for calculations
@@ -208,14 +208,14 @@ string output=vm["out"].as<string>();
 	}
 
 	std::ofstream ofs;
-	ofs.open(output);
+	ofs.open(output+"_estimates.txt");
 	for (int i=0; i<M; ++i) {
 		ofs << "beta_" <<i<< ' ';
 	}
 	for (int i=0; i<M; ++i) {
 		ofs << "incl_" <<i<< ' ';
 	}
-
+	ofs << "Ew" << " ";
 	ofs << "Epsi2" << " ";
 	ofs << "Esigma2" << " ";
 	ofs << "\n";
@@ -223,7 +223,7 @@ string output=vm["out"].as<string>();
 
 	//begin GIBBS sampling iterations
 
-	ofs.open (output, std::ios_base::app);
+	ofs.open (output+"_estimates.txt", std::ios_base::app);
 	for (i=0;i<iter;i++){
 
 		Emu=sample_mu(N,Esigma2,Y,X,Ebeta);
@@ -238,7 +238,7 @@ string output=vm["out"].as<string>();
 			double Cj=el1[marker]+Esigma2/Epsi2;
 			double rj=X.col(marker).transpose()*epsilon;
 
-			epsilon=epsilon-X.col(marker)*Ebeta[marker];
+
 
 			double ratio=(((exp(-(pow(rj,2))/(2*Cj*Esigma2))*sqrt((Epsi2*Cj)/Esigma2))));
 			ratio=Ew/(Ew+ratio*(1-Ew));
@@ -250,6 +250,8 @@ string output=vm["out"].as<string>();
 			else if (ny[marker]==1){
 				Ebeta[marker]=rnorm(rj/Cj,Esigma2/Cj);
 			}
+
+			epsilon=epsilon-X.col(marker)*Ebeta[marker];
 
 		}
 		for (j=0;j<M;j++){
@@ -267,6 +269,7 @@ string output=vm["out"].as<string>();
 		Epsi2=sample_psi2_chisq(Ebeta,NZ,v0B,s0B);
 		Esigma2=sample_sigma_chisq(N,epsilon,v0E,s0E);
 
+		ofs << Ew << " ";
 		ofs << Epsi2 << " ";
 		ofs << Esigma2 << " ";
 		ofs << "\n";
@@ -276,17 +279,17 @@ string output=vm["out"].as<string>();
 
 	//write to files
 	ofstream myfile1;
-	myfile1.open ("BayesC_Y.txt");
+	myfile1.open (output+"_Y.txt");
 	myfile1 << Y << '\n';
 	myfile1.close();
 
 	ofstream myfile2;
-	myfile2.open ("BayesC_X.txt");
+	myfile2.open (output+"X.txt");
 	myfile2 << X << '\n';
 	myfile2.close();
 
 	ofstream myfile3;
-	myfile3.open ("BayesC_betatrue.txt");
+	myfile3.open (output+"_betatrue.txt");
 	myfile3 << beta_true << '\n';
 	myfile3.close();
 
