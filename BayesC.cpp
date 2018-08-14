@@ -16,13 +16,17 @@
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
+
 #include <boost/random.hpp>
 #include <boost/math/distributions.hpp>
 #include <boost/math/distributions/inverse_chi_squared.hpp>
+#include <boost/program_options.hpp>
+#include <iterator>
 
 
 using namespace std;
 using namespace Eigen;
+namespace po = boost::program_options;
 
 using Eigen::Matrix;
 using Eigen::MatrixXd;
@@ -85,8 +89,8 @@ double sample_mu(int N, double Esigma2,const VectorXd& Y,const MatrixXd& X,const
 double sample_psi2_chisq(const VectorXd& beta,int NZ,double v0B,double s0B){
 	double df=v0B+NZ;
 	double scale=(beta.squaredNorm()*NZ+v0B*s0B)/(v0B+NZ);
-	//cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<v0B<<"\t"<<s0B<<endl;
 	double psi2=rinvchisq(df, scale);
+	cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<psi2<<endl;
 	return(psi2);
 }
 
@@ -104,9 +108,28 @@ double sample_w(int M,int NZ){
 
 int main(int argc, char *argv[])
 {
-	int M=2500;
-	int N=1000;
-	int MT=2000;
+
+po::options_description desc("Options");
+desc.add_options()
+    ("M", po::value<int>()->default_value(2500), "No. of simulated markers")
+	("N", po::value<int>()->default_value(1000), "No. of simulated individuals")
+	("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
+	("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
+    ("out", po::value<std::string>()->default_value("BayesC_out.txt"),"Output filename")
+	;
+
+po::variables_map vm;
+po::store(po::parse_command_line(argc,argv,desc),vm);
+po::notify(vm);
+
+int M=vm["M"].as<int>();
+int N=vm["N"].as<int>();
+double pNZ=vm["pNZ"].as<double>();
+int MT=pNZ*M;
+
+int iter=vm["iter"].as<int>();
+string output=vm["out"].as<string>();
+
 	int i,j,k,l,m=0;
 	double sigmaY_true=1;
 	double sigmab_true=1;
@@ -119,13 +142,9 @@ int main(int argc, char *argv[])
 	}
 	//beta coefficients
 	VectorXd beta_true(M);
-	for (i=0;i<M;i++){
-		beta_true[i]=rnorm(0,sigmab_true);
-	}
-	//set some betas to zero
+	beta_true.setZero();
 	for (i=0;i<MT;i++){
-		beta_true[i]=0.0;
-
+		beta_true[i]=rnorm(0,sigmab_true);
 	}
 
 	//error
@@ -145,7 +164,6 @@ int main(int argc, char *argv[])
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 	//cout<<"OK"<<endl;
 
-	int iter=5000;
 
 	double Emu=0;
 	VectorXd vEmu(N);
@@ -190,7 +208,7 @@ int main(int argc, char *argv[])
 	}
 
 	std::ofstream ofs;
-	ofs.open("BayesC_out.txt");
+	ofs.open(output);
 	for (int i=0; i<M; ++i) {
 		ofs << "beta_" <<i<< ' ';
 	}
@@ -205,7 +223,7 @@ int main(int argc, char *argv[])
 
 	//begin GIBBS sampling iterations
 
-	ofs.open ("BayesC_out.txt", std::ios_base::app);
+	ofs.open (output, std::ios_base::app);
 	for (i=0;i<iter;i++){
 
 		Emu=sample_mu(N,Esigma2,Y,X,Ebeta);
