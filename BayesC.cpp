@@ -85,7 +85,7 @@ double sample_mu(int N, double Esigma2,const VectorXd& Y,const MatrixXd& X,const
 double sample_psi2_chisq(const VectorXd& beta,int NZ,double v0B,double s0B){
 	double df=v0B+NZ;
 	double scale=(beta.squaredNorm()*NZ+v0B*s0B)/(v0B+NZ);
-	//cout<<df<<"\t"<<scale<<endl;
+	//cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<v0B<<"\t"<<s0B<<endl;
 	double psi2=rinvchisq(df, scale);
 	return(psi2);
 }
@@ -104,9 +104,9 @@ double sample_w(int M,int NZ){
 
 int main(int argc, char *argv[])
 {
-	int M=25000;
-	int N=5000;
-	int MT=20000;
+	int M=2500;
+	int N=1000;
+	int MT=2000;
 	int i,j,k,l,m=0;
 	double sigmaY_true=1;
 	double sigmab_true=1;
@@ -149,7 +149,8 @@ int main(int argc, char *argv[])
 
 	double Emu=0;
 	VectorXd vEmu(N);
-	vEmu.setZero();
+	vEmu.setOnes();
+
 	VectorXd Ebeta(M);
 	Ebeta.setZero();
 	VectorXd ny(M);
@@ -158,7 +159,7 @@ int main(int argc, char *argv[])
 	//residual error
 	VectorXd epsilon(N);
 
-	epsilon=Y-X*Ebeta-vEmu;
+	epsilon=Y-X*Ebeta-vEmu*Emu;
 
 	std::vector<int> markerI;
 	for (int i=0; i<M; ++i) {
@@ -173,22 +174,38 @@ int main(int argc, char *argv[])
 	double Epsi2=rbeta(1,1);
 
 	//Standard parameterization of hyperpriors for variances
-	double v0E,s0E,v0B,s0B=0.001;
+	double v0E=0.001,s0E=0.001,v0B=0.001,s0B=0.001;
 
 
-	 /* Alternative parameterization of hyperpriors for variances
-				double v0E,v0B=4;
-				double s0B=((v0B-2)/v0B)*Epsi2;
-				double s0E=((v0E-2)/v0E)*Esigma2;
-*/
+	// Alternative parameterization of hyperpriors for variances
+	//double v0E=4,v0B=4;
+	//double s0B=((v0B-2)/v0B)*Epsi2;
+	//double s0E=((v0E-2)/v0E)*Esigma2;
+
 
 	//pre-computed elements for calculations
 	VectorXd el1(M);
 	for (int i=0; i<M; ++i) {
-	el1[i]=X.col(i).transpose()*X.col(i);
+		el1[i]=X.col(i).transpose()*X.col(i);
 	}
+
+	std::ofstream ofs;
+	ofs.open("BayesC_out.txt");
+	for (int i=0; i<M; ++i) {
+		ofs << "beta_" <<i<< ' ';
+	}
+	for (int i=0; i<M; ++i) {
+		ofs << "incl_" <<i<< ' ';
+	}
+
+	ofs << "Epsi2" << " ";
+	ofs << "Esigma2" << " ";
+	ofs << "\n";
+	ofs.close();
+
 	//begin GIBBS sampling iterations
 
+	ofs.open ("BayesC_out.txt", std::ios_base::app);
 	for (i=0;i<iter;i++){
 
 		Emu=sample_mu(N,Esigma2,Y,X,Ebeta);
@@ -198,57 +215,62 @@ int main(int argc, char *argv[])
 		for (j=0;j<M;j++){
 			marker=markerI[j];
 
-			epsilon=epsilon+X.col(j)*Ebeta[j];
+			epsilon=epsilon+X.col(marker)*Ebeta[marker];
 
-			double Cj=el1[j]+Esigma2/Epsi2;
-			double rj=X.col(j).transpose()*epsilon;
+			double Cj=el1[marker]+Esigma2/Epsi2;
+			double rj=X.col(marker).transpose()*epsilon;
 
-			epsilon=epsilon-X.col(j)*Ebeta[j];
+			epsilon=epsilon-X.col(marker)*Ebeta[marker];
 
 			double ratio=(((exp(-(pow(rj,2))/(2*Cj*Esigma2))*sqrt((Epsi2*Cj)/Esigma2))));
 			ratio=Ew/(Ew+ratio*(1-Ew));
-			ny[j]=rbernoulli(ratio);
+			ny[marker]=rbernoulli(ratio);
 
-			if (ny[j]==0){
-				Ebeta[j]=0;
+			if (ny[marker]==0){
+				Ebeta[marker]=0;
 			}
-			else if (ny[j]==1){
-				Ebeta[j]=rnorm(rj/Cj,Esigma2/Cj);
+			else if (ny[marker]==1){
+				Ebeta[marker]=rnorm(rj/Cj,Esigma2/Cj);
 			}
 
+		}
+		for (j=0;j<M;j++){
+			ofs << Ebeta[j] << " ";
+		}
+		for (j=0;j<M;j++){
+			ofs << ny[j] << " ";
 		}
 		NZ=ny.sum();
 		//cout<<NZ<<endl;
 
 		Ew=sample_w(M,NZ);
-		epsilon=Y-X*Ebeta;
+		epsilon=Y-X*Ebeta-vEmu*Emu;
 
 		Epsi2=sample_psi2_chisq(Ebeta,NZ,v0B,s0B);
 		Esigma2=sample_sigma_chisq(N,epsilon,v0E,s0E);
 
-	}
+		ofs << Epsi2 << " ";
+		ofs << Esigma2 << " ";
+		ofs << "\n";
 
+	}
+	ofs.close();
 
 	//write to files
 	ofstream myfile1;
-	myfile1.open ("Y.txt");
+	myfile1.open ("BayesC_Y.txt");
 	myfile1 << Y << '\n';
 	myfile1.close();
-/*
+
 	ofstream myfile2;
-	myfile2.open ("X.txt");
+	myfile2.open ("BayesC_X.txt");
 	myfile2 << X << '\n';
 	myfile2.close();
-*/
+
 	ofstream myfile3;
-	myfile3.open ("beta.txt");
+	myfile3.open ("BayesC_betatrue.txt");
 	myfile3 << beta_true << '\n';
 	myfile3.close();
-
-	ofstream myfile4;
-	myfile4.open ("Ebeta.txt");
-	myfile4 << Ebeta << '\n';
-	myfile4.close();
 
 	return 0;
 }
