@@ -146,7 +146,6 @@ int main(int argc, char *argv[])
 	//cout<<"OK"<<endl;
 
 	int iter=5000;
-	int burnin=2500;
 
 	double Emu=0;
 	VectorXd vEmu(N);
@@ -185,10 +184,8 @@ int main(int argc, char *argv[])
 
 	//pre-computed elements for calculations
 	VectorXd el1(M);
-	VectorXd el2(M);
 	for (int i=0; i<M; ++i) {
 	el1[i]=X.col(i).transpose()*X.col(i);
-	el2[i]=X.col(i).transpose();
 	}
 	//begin GIBBS sampling iterations
 
@@ -204,7 +201,7 @@ int main(int argc, char *argv[])
 			epsilon=epsilon+X.col(j)*Ebeta[j];
 
 			double Cj=el1[j]+Esigma2/Epsi2;
-			double rj=el2[i]*epsilon;
+			double rj=X.col(j).transpose()*epsilon;
 
 			epsilon=epsilon-X.col(j)*Ebeta[j];
 
@@ -215,7 +212,7 @@ int main(int argc, char *argv[])
 			if (ny[j]==0){
 				Ebeta[j]=0;
 			}
-			if (ny[j]==1){
+			else if (ny[j]==1){
 				Ebeta[j]=rnorm(rj/Cj,Esigma2/Cj);
 			}
 
