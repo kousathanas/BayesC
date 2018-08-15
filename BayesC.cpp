@@ -106,17 +106,30 @@ double sample_w(int M,int NZ){
 	return(w);
 }
 
+
+void ReadFromFile(std::vector<double> &x, const std::string &file_name)
+{
+	std::ifstream read_file(file_name);
+	assert(read_file.is_open());
+
+	std::copy(std::istream_iterator<double>(read_file), std::istream_iterator<double>(),
+			std::back_inserter(x));
+
+	read_file.close();
+}
+
 int main(int argc, char *argv[])
 {
 
 	po::options_description desc("Options");
 	desc.add_options()
-    		("M", po::value<int>()->default_value(2500), "No. of simulated markers")
-			("N", po::value<int>()->default_value(1000), "No. of simulated individuals")
-			("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
-			("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
-			("out", po::value<std::string>()->default_value("BayesC_out"),"Output filename")
-			;
+		("M", po::value<int>()->required(), "No. of simulated markers")
+		("N", po::value<int>()->required(), "No. of simulated individuals")
+		("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
+		("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
+		("input", po::value<std::string>()->default_value("none"),"Input filename")
+		("out", po::value<std::string>()->default_value("BayesC_out"),"Output filename")
+	;
 
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc,argv,desc),vm);
@@ -124,45 +137,76 @@ int main(int argc, char *argv[])
 
 	int M=vm["M"].as<int>();
 	int N=vm["N"].as<int>();
-	double pNZ=vm["pNZ"].as<double>();
-	int MT=pNZ*M;
-
 	int iter=vm["iter"].as<int>();
+	string input=vm["input"].as<string>();
 	string output=vm["out"].as<string>();
 
-	int i,j,k,l,m=0;
-	double sigmaY_true=1;
-	double sigmab_true=1;
-	//Genotype matrix
 	MatrixXd X(N,M);
-	for (i=0;i<N;i++){
-		for (j=0;j<M;j++){
-			X(i,j)=rnorm(0,1);
-		}
-	}
+	VectorXd Y(N);
+
 	//beta coefficients
 	VectorXd beta_true(M);
 	beta_true.setZero();
-	for (i=0;i<MT;i++){
-		beta_true[i]=rnorm(0,sigmab_true);
-	}
 
-	//error
-	VectorXd error(N);
-	for (i=0;i<N;i++){
-		error[i]=rnorm(0,sigmaY_true);
-	}
+	int i,j,k,l,m=0;
 
-	//construct phenotypes
-	VectorXd Y(N);
-	Y=X*beta_true;
-	Y+=error;
+	//Was an input matrix given?
+
+	if (input!="none"){ //Either read input tables for X and Y
+		ifstream f1(input+".X");
+		//f1 >> m >> n;
+		for (int i = 0; i < N; i++)
+		{
+			for (int j = 0; j < M; j++)
+			{
+				f1 >> X(i,j);
+			}
+		}
+		f1.close();
+		cout<<"finished reading matrix X!"<<endl;
+
+		std::vector<double> Y_in;
+		ReadFromFile(Y_in, input+".Y");
+		double* ptr_Y = &Y_in[0];
+		Eigen::Map<Eigen::VectorXd> Y1(ptr_Y, Y_in.size());
+		cout<<"finished reading vector Y!"<<endl;
+		if(Y_in.size()!=N){cout<<"input Y vector size doesnt much the size indicated in the command line"<<endl;return 0;}
+		Y=Y1;
+		Y_in.clear();
+
+
+	}else //or simulate
+	{
+		double pNZ=vm["pNZ"].as<double>();
+		double sigmaY_true=1;
+		double sigmab_true=1;
+		int MT=pNZ*M;
+
+		//Fill Genotype matrix
+		for (i=0;i<N;i++){
+			for (j=0;j<M;j++){
+				X(i,j)=rnorm(0,1);
+			}
+		}
+		for (i=0;i<MT;i++){
+			beta_true[i]=rnorm(0,sigmab_true);
+		}
+
+		//error
+		VectorXd error(N);
+		for (i=0;i<N;i++){
+			error[i]=rnorm(0,sigmaY_true);
+		}
+
+		//construct phenotypes
+		Y=X*beta_true;
+		Y+=error;
+	}
 
 	//normalize
 	RowVectorXd mean = X.colwise().mean();
 	RowVectorXd sd = (X.rowwise() - mean).array().square().colwise().mean();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
-	//cout<<"OK"<<endl;
 
 
 	double Emu=0;
@@ -277,20 +321,24 @@ int main(int argc, char *argv[])
 	}
 	ofs.close();
 
+
 	//write to files
 	ofstream myfile1;
 	myfile1.open (output+"_Y.txt");
-	myfile1 << Y << '\n';
+	for (i=0;i<N;i++){
+		myfile1 << Y[i] << ' ';
+	}
+	myfile1 << endl;
 	myfile1.close();
 
 	ofstream myfile2;
-	myfile2.open (output+"X.txt");
-	myfile2 << X << '\n';
+	myfile2.open (output+"_X.txt");
+	myfile2 << X << ' ';
 	myfile2.close();
 
 	ofstream myfile3;
 	myfile3.open (output+"_betatrue.txt");
-	myfile3 << beta_true << '\n';
+	myfile3 << beta_true << ' ';
 	myfile3.close();
 
 	return 0;
