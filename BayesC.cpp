@@ -23,7 +23,6 @@
 #include <boost/program_options.hpp>
 #include <iterator>
 
-
 using namespace std;
 using namespace Eigen;
 namespace po = boost::program_options;
@@ -160,6 +159,7 @@ int main(int argc, char *argv[])
 			for (int j = 0; j < M; j++)
 			{
 				f1 >> X(i,j);
+				//cout<<X(i,j)<<endl;
 			}
 		}
 		f1.close();
@@ -321,10 +321,10 @@ int main(int argc, char *argv[])
 	}
 	ofs.close();
 
-
+if (input=="none"){
 	//write to files
 	ofstream myfile1;
-	myfile1.open (output+"_Y.txt");
+	myfile1.open (output+"_simulated_Y.txt");
 	for (i=0;i<N;i++){
 		myfile1 << Y[i] << ' ';
 	}
@@ -332,14 +332,15 @@ int main(int argc, char *argv[])
 	myfile1.close();
 
 	ofstream myfile2;
-	myfile2.open (output+"_X.txt");
+	myfile2.open (output+"_simulated_X.txt");
 	myfile2 << X << ' ';
 	myfile2.close();
 
 	ofstream myfile3;
-	myfile3.open (output+"_betatrue.txt");
+	myfile3.open (output+"_simulated_betatrue.txt");
 	myfile3 << beta_true << ' ';
 	myfile3.close();
+}
 
 	return 0;
 }
