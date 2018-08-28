@@ -1,14 +1,14 @@
 # BayesC
 
 ## Description
-Implementation of Bayesian penalized regression with a spike and slab prior.
+Implementation of GIBBS sampler for Bayesian penalized regression with a spike and slab prior.
 
 The model is 
 ``y=Xb+e``
 
 where ``y`` is the vector of phenotypes, ``X`` is the genotype matrix, ``b`` is the vector with the SNP effect sizes and ``e`` is the error.
 
- 
+
 ## Installation
 To install simply type in the command line:    
 make

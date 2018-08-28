@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
 
 	//normalize
 	RowVectorXd mean = X.colwise().mean();
-	RowVectorXd sd = (X.rowwise() - mean).array().square().colwise().mean();
+	RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 
 
@@ -333,7 +333,12 @@ if (input=="none"){
 
 	ofstream myfile2;
 	myfile2.open (output+"_simulated_X.txt");
-	myfile2 << X << ' ';
+	for (i=0;i<N;i++){
+		for (j=0;j<M;j++){
+			myfile2<<X(i,j)<< ' ';
+		}
+		myfile2<<endl;
+	}
 	myfile2.close();
 
 	ofstream myfile3;
