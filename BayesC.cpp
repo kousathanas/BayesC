@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <omp.h>
+#include <chrono>
 
 #include <random>
 #include <map>
@@ -59,6 +60,13 @@ double rbeta(double alpha, double beta)
 	double q = quantile(dist, runif(0,1));
 
 	return(q);
+}
+
+int rbinom(int k, double p)
+{
+
+	std::binomial_distribution<> dist(k,p);
+	return dist(gen);
 }
 
 double rinvchisq(double df, double scale)
@@ -125,11 +133,13 @@ int main(int argc, char *argv[])
 		("M", po::value<int>()->required(), "No. of simulated markers")
 		("N", po::value<int>()->required(), "No. of simulated individuals")
 		("iter", po::value<int>()->default_value(5000), "No. of Gibbs iterations")
-		("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero")
+		("pNZ", po::value<double>()->default_value(0.5), "Proportion nonzero (simulations)")
+		("h2", po::value<double>()->default_value(0.6), "Heritability (simulations)")
 		("input", po::value<std::string>()->default_value("none"),"Input filename")
 		("out", po::value<std::string>()->default_value("BayesC_out"),"Output filename")
 	;
 
+	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc,argv,desc),vm);
 	po::notify(vm);
@@ -137,6 +147,7 @@ int main(int argc, char *argv[])
 	int M=vm["M"].as<int>();
 	int N=vm["N"].as<int>();
 	int iter=vm["iter"].as<int>();
+
 	string input=vm["input"].as<string>();
 	string output=vm["out"].as<string>();
 
@@ -177,9 +188,10 @@ int main(int argc, char *argv[])
 
 	}else //or simulate
 	{
+		double h2=vm["h2"].as<double>();
 		double pNZ=vm["pNZ"].as<double>();
 		double sigmaY_true=1;
-		double sigmab_true=1;
+
 		int MT=pNZ*M;
 
 		//Fill Genotype matrix
@@ -189,25 +201,26 @@ int main(int argc, char *argv[])
 			}
 		}
 		for (i=0;i<MT;i++){
-			beta_true[i]=rnorm(0,sigmab_true);
+			beta_true[i]=rnorm(0,sqrt(h2/MT));
 		}
 
 		//error
 		VectorXd error(N);
 		for (i=0;i<N;i++){
-			error[i]=rnorm(0,sigmaY_true);
+			error[i]=rnorm(0,sqrt(1-h2));
 		}
 
 		//construct phenotypes
 		Y=X*beta_true;
 		Y+=error;
 	}
-
 	//normalize
 	RowVectorXd mean = X.colwise().mean();
 	RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 
+    Y = (Y.array() - Y.array().mean());
+    Y /= sqrt(Y.squaredNorm() / (double(N - 1)));
 
 	double Emu=0;
 	VectorXd vEmu(N);
@@ -282,8 +295,6 @@ int main(int argc, char *argv[])
 			double Cj=el1[marker]+Esigma2/Epsi2;
 			double rj=X.col(marker).transpose()*epsilon;
 
-
-
 			double ratio=(((exp(-(pow(rj,2))/(2*Cj*Esigma2))*sqrt((Epsi2*Cj)/Esigma2))));
 			ratio=Ew/(Ew+ratio*(1-Ew));
 			ny[marker]=rbernoulli(ratio);
@@ -346,6 +357,11 @@ if (input=="none"){
 	myfile3 << beta_true << ' ';
 	myfile3.close();
 }
+
+
+std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
+
+std::cout << "Time taken for full analysis = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count()*1e-9 <<" seconds"<<std::endl;
 
 	return 0;
 }
