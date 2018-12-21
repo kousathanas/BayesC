@@ -27,15 +27,6 @@ using namespace std;
 using namespace Eigen;
 namespace po = boost::program_options;
 
-using Eigen::Matrix;
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
-using Eigen::LLT;
-using Eigen::Lower;
-using Eigen::Map;
-using Eigen::Upper;
-typedef Map<MatrixXd> MapMatd;
-
 void ReadFromFile(std::vector<double> &x, const std::string &file_name)
 {
 	std::ifstream read_file(file_name);
