@@ -16,13 +16,12 @@
 #include <random>
 
 #include <Eigen/Core>
-#include <Eigen/Dense>
 
-#include <boost/random.hpp>
-#include <boost/math/distributions.hpp>
-#include <boost/math/distributions/inverse_chi_squared.hpp>
 #include <boost/program_options.hpp>
 #include <iterator>
+
+#include "BayesC_distributions.h"
+#include "Sampling_functions.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -37,83 +36,6 @@ using Eigen::Map;
 using Eigen::Upper;
 typedef Map<MatrixXd> MapMatd;
 
-boost::random::mt19937 gen(time(0));
-
-//distributions
-double runif(double lower, double higher)
-{
-	boost::random::uniform_real_distribution<> dist(lower, higher);
-	return dist(gen);
-}
-
-double rnorm(double mean, double sd)
-{
-	boost::random::normal_distribution<> dist(mean, sd);
-	return dist(gen);
-}
-
-
-double rbeta(double alpha, double beta)
-{
-
-	boost::math::beta_distribution<> dist(alpha, beta);
-	double q = quantile(dist, runif(0,1));
-
-	return(q);
-}
-
-int rbinom(int k, double p)
-{
-
-	std::binomial_distribution<> dist(k,p);
-	return dist(gen);
-}
-
-double rinvchisq(double df, double scale)
-{
-
-	boost::math::inverse_chi_squared_distribution<> dist(df, scale);
-	double q = quantile(dist, runif(0,1));
-
-	return(q);
-}
-int rbernoulli(double p)
-{
-	std::bernoulli_distribution dist(p);
-	return dist(gen);
-}
-
-//sampling functions
-double sample_mu(int N, double Esigma2,const VectorXd& Y,const MatrixXd& X,const VectorXd& beta)
-{
-	double mean=((Y-X*beta).sum())/N;
-	double sd=sqrt(Esigma2/N);
-	double mu=rnorm(mean,sd);
-	return(mu);
-}
-
-//sample variance of beta
-double sample_psi2_chisq(const VectorXd& beta,int NZ,double v0B,double s0B){
-	double df=v0B+NZ;
-	double scale=(beta.squaredNorm()*NZ+v0B*s0B)/(v0B+NZ);
-	//cout<<NZ<<"\t"<<beta.squaredNorm()<<"\t"<<df<<"\t"<<scale<<"\t"<<endl;
-	double psi2=rinvchisq(df, scale);
-	return(psi2);
-}
-
-//sample error variance of Y
-double sample_sigma_chisq(int N,const VectorXd& epsilon,double v0E,double s0E){
-	double sigma2=rinvchisq(v0E+N, (epsilon.squaredNorm()+v0E*s0E)/(v0E+N));
-	return(sigma2);
-}
-
-//sample mixture weight
-double sample_w(int M,int NZ){
-	double w=rbeta(1+NZ,1+(M-NZ));
-	return(w);
-}
-
-
 void ReadFromFile(std::vector<double> &x, const std::string &file_name)
 {
 	std::ifstream read_file(file_name);
@@ -124,6 +46,7 @@ void ReadFromFile(std::vector<double> &x, const std::string &file_name)
 
 	read_file.close();
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -139,7 +62,10 @@ int main(int argc, char *argv[])
 		("out", po::value<std::string>()->default_value("BayesC_out"),"Output filename")
 	;
 
+	//clock starts
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
+	//map variables
 	po::variables_map vm;
 	po::store(po::parse_command_line(argc,argv,desc),vm);
 	po::notify(vm);
@@ -214,14 +140,16 @@ int main(int argc, char *argv[])
 		Y=X*beta_true;
 		Y+=error;
 	}
-	//normalize
+	//standardize matrix X
 	RowVectorXd mean = X.colwise().mean();
 	RowVectorXd sd = ((X.rowwise() - mean).array().square().colwise().sum() / (X.rows() - 1)).sqrt();
 	X = (X.rowwise() - mean).array().rowwise() / sd.array();
 
+	//standardize vector Y
     Y = (Y.array() - Y.array().mean());
     Y /= sqrt(Y.squaredNorm() / (double(N - 1)));
 
+    //Initialize variables
 	double Emu=0;
 	VectorXd vEmu(N);
 	vEmu.setOnes();
@@ -242,7 +170,7 @@ int main(int argc, char *argv[])
 	}
 	int marker=0;
 
-	//non-zero variable NZ
+
 	int NZ=0;
 
 	double Esigma2=epsilon.squaredNorm()/(N*0.5);
@@ -264,6 +192,7 @@ int main(int argc, char *argv[])
 		el1[i]=X.col(i).transpose()*X.col(i);
 	}
 
+	//open files for writing
 	std::ofstream ofs;
 	ofs.open(output+"_estimates.txt");
 	for (int i=0; i<M; ++i) {
@@ -278,6 +207,9 @@ int main(int argc, char *argv[])
 	ofs << "\n";
 	ofs.close();
 
+	std::chrono::steady_clock::time_point end1= std::chrono::steady_clock::now();
+	std::cout << "Time taken for Reading/generating data = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end1 - begin).count()*1e-9 <<" seconds"<<std::endl;
+
 	//begin GIBBS sampling iterations
 
 	ofs.open (output+"_estimates.txt", std::ios_base::app);
@@ -287,6 +219,7 @@ int main(int argc, char *argv[])
 
 		//sample effects and probabilities jointly
 		std::random_shuffle(markerI.begin(), markerI.end());
+
 		for (j=0;j<M;j++){
 			marker=markerI[j];
 
@@ -331,7 +264,7 @@ int main(int argc, char *argv[])
 
 	}
 	ofs.close();
-
+//write out simulated data
 if (input=="none"){
 	//write to files
 	ofstream myfile1;
@@ -341,7 +274,7 @@ if (input=="none"){
 	}
 	myfile1 << endl;
 	myfile1.close();
-
+/*
 	ofstream myfile2;
 	myfile2.open (output+"_simulated_X.txt");
 	for (i=0;i<N;i++){
@@ -351,7 +284,7 @@ if (input=="none"){
 		myfile2<<endl;
 	}
 	myfile2.close();
-
+*/
 	ofstream myfile3;
 	myfile3.open (output+"_simulated_betatrue.txt");
 	myfile3 << beta_true << ' ';
@@ -359,9 +292,8 @@ if (input=="none"){
 }
 
 
-std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
-
-std::cout << "Time taken for full analysis = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end - begin).count()*1e-9 <<" seconds"<<std::endl;
+std::chrono::steady_clock::time_point end2= std::chrono::steady_clock::now();
+std::cout << "Time taken for full analysis = " << std::chrono::duration_cast<std::chrono::nanoseconds> (end2 - begin).count()*1e-9 <<" seconds"<<std::endl;
 
 	return 0;
 }
